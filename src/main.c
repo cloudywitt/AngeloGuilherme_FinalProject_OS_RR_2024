@@ -40,7 +40,6 @@ void print_file_list() {
 
 void add_dir(const char* dir_name) {
     for (int i = 0; i < last_dir_idx; i++) {
-
         if (directories[i][0] == '\0') {
             strcpy(directories[i], dir_name);
 
@@ -69,6 +68,20 @@ int rm_dir(const char* dir_name) {
     }
 }
 
+int rm_file(const char* file_name) {
+    for (int i = 0; i <= last_file_idx; i++) {
+        if (strcmp(file_name, files[i]) == 0) {
+            files[i][0] = '\0';
+
+            if (last_file_idx == i) {
+                last_file_idx--;
+            }
+
+            return 1;
+        }
+    }
+}
+
 static int agfs_rmdir(const char* path) {
     // after, check if directory is empty. If not, return -ENOTEMPTY
     if (!rm_dir(path + 1)) {
@@ -78,7 +91,7 @@ static int agfs_rmdir(const char* path) {
     return 0;
 }
 
-int is_dir(const char *path) {
+int is_dir(const char* path) {
     path++; // Eliminating "/" in the path
 
     for (int curr_idx = 0; curr_idx <= last_dir_idx; curr_idx++ )
@@ -89,19 +102,29 @@ int is_dir(const char *path) {
     return 0;
 }
 
-void add_file(const char* filename) {
-    last_file_idx++;
-    strcpy(files[last_file_idx], filename);
+void add_file(const char* file_name) {
+    for (int i = 0; i < last_file_idx; i++) {
+        if (files[i][0] == '\0') {
+            strcpy(files[i], file_name);
+            strcpy(files_content[i], "");
 
-    last_file_content_idx++;
-    strcpy(files_content[last_file_content_idx], "");
+            print_file_list();
+
+            return;
+        }
+    }
+
+    last_file_idx++;
+    strcpy(files[last_file_idx], file_name);
+
+    print_file_list();
 }
 
 int is_file(const char* path) {
     path++; // Eliminating "/" in the path
 
-    for (int curr_idx = 0; curr_idx <= last_file_idx; curr_idx++)
-        if (strcmp(path, files[curr_idx]) == 0)
+    for (int i = 0; i <= last_file_idx; i++)
+        if (strcmp(path, files[i]) == 0)
             return 1;
 
     return 0;
@@ -110,9 +133,9 @@ int is_file(const char* path) {
 int get_file_index(const char* path) {
     path++; // Eliminating "/" in the path
 
-    for (int curr_idx = 0; curr_idx <= last_file_idx; curr_idx++)
-        if (strcmp(path, files[curr_idx]) == 0)
-            return curr_idx;
+    for (int i = 0; i <= last_file_idx; i++)
+        if (strcmp(path, files[i]) == 0)
+            return i;
 
     return -1;
 }
@@ -126,7 +149,7 @@ void write_to_file(const char* path, const char* new_content) {
     strcpy(files_content[file_idx], new_content);
 }
 
-static int agfs_getattr(const char *path, struct stat *st) {
+static int agfs_getattr(const char* path, struct stat* st) {
     st->st_uid = getuid(); // The owner of the file/directory is the user who mounted the filesystem
     st->st_gid = getgid(); // The group of the file/directory is the same as the group of the user who mounted the filesystem
     st->st_atime = time(NULL); // The last "a"ccess of the file/directory is right now
@@ -146,7 +169,13 @@ static int agfs_getattr(const char *path, struct stat *st) {
     return 0;
 }
 
-static int agfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+static int agfs_readdir(
+    const char* path, 
+    void* buffer, 
+    fuse_fill_dir_t filler, 
+    off_t offset, 
+    struct fuse_file_info* fi
+) {
     filler(buffer, ".", NULL, 0); // Current Directory
     filler(buffer, "..", NULL, 0); // Parent Directory
 
@@ -158,51 +187,73 @@ static int agfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, 
             }
         }
 
-        for (int curr_idx = 0; curr_idx <= last_file_idx; curr_idx++)
-            filler(buffer, files[curr_idx], NULL, 0);
+        for (int curr_idx = 0; curr_idx <= last_file_idx; curr_idx++) {
+            if (files[curr_idx][0] != '\0') {
+                filler(buffer, files[curr_idx], NULL, 0);
+            }
+        }
     }
 
     return 0;
 }
 
-static int agfs_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi) {
+static int agfs_read(
+    const char* path,
+    char* buffer,
+    size_t size,
+    off_t offset,
+    struct fuse_file_info* fi
+) {
     int file_idx = get_file_index(path);
 
     if (file_idx == -1) return -1;
 
-    char *content = files_content[file_idx];
+    char* content = files_content[file_idx];
 
     memcpy(buffer, content + offset, size);
 
     return strlen(content) - offset;
 }
 
-static int agfs_mkdir(const char *path, mode_t mode) {
+static int agfs_mkdir(const char* path, mode_t mode) {
     path++;
     add_dir(path);
 
     return 0;
 }
 
-static int agfs_mknod( const char *path, mode_t mode, dev_t rdev ) {
+static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     path++;
-    add_file( path );
+    add_file(path);
 
     return 0;
 }
 
-static int agfs_write( const char *path, const char *buffer, size_t size, off_t offset, struct fuse_file_info *info ) {
+static int agfs_unlink(const char* path) {
+    if (!rm_file(path + 1)) {
+        return -ENOENT; // File not found
+    }
+
+    return 0;
+}
+
+static int agfs_write(
+    const char* path,
+    const char* buffer,
+    size_t size,
+    off_t offset, struct fuse_file_info* info
+) {
     write_to_file(path, buffer);
 
     return (int) size;
 }
 
 static int agfs_utimens(
-    const char *path, 
-    const struct timespec tv[2] 
+    const char* path,
+    const struct timespec tv[2]
 ) {
     // printf("utimens called for %s\n", path);  // Debug print
-    if (1) { // file && strcmp(path + 1, file->name) == 0
+    if (1) {
         // File exists, update the times
         return 0; // Success, but in this example, we don't store the actual times.
     }
@@ -215,12 +266,13 @@ static struct fuse_operations operations = {
     .readdir = agfs_readdir,
     .read = agfs_read,
     .mkdir = agfs_mkdir,
+    .rmdir = agfs_rmdir,
     .mknod = agfs_mknod,
+    .unlink = agfs_unlink,
     .write = agfs_write,
     .utimens = agfs_utimens,
-    .rmdir = agfs_rmdir,
 };
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     return fuse_main(argc, argv, &operations, NULL);
 }
