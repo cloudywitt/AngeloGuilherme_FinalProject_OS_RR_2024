@@ -188,15 +188,9 @@ static int agfs_readdir(
     filler(buffer, ".", NULL, 0); // Current Directory
     filler(buffer, "..", NULL, 0); // Parent Directory
 
-    // If the user is trying to show the files/directories of the root directory show the following
-    // find the directories of that specific directory and list them
-    // this function, readdir, is called upon the directory we're in
     Node* directory = find_node(path);
 
-    // might have to check if I can have a dir not found in this case
     if (directory && directory->is_dir) {
-        // filler every entry of that dir
-
         for (int i = 0; i < MAX_CHILDREN_NUM; i++) {
             if (directory->children[i]) {
                 filler(buffer, directory->children[i]->name, NULL, 0);
@@ -256,16 +250,43 @@ static int agfs_write(
     return (int) size;
 }
 
+char* find_parent(const char* path) {
+    if (strcmp("/", path) == 0) {
+        return NULL;
+    }
+
+    // Copy the path since we will modify it
+    static char parent_dir[256];
+    strcpy(parent_dir, path);
+
+    // Find the last occurrence of '/'
+    char* last_slash = strrchr(parent_dir, '/');
+    
+    if (last_slash == NULL || last_slash == parent_dir) {
+        return "/";  // The file is on root
+    }
+
+    // Remove the last component (file or directory name) by terminating the string at the last '/'
+    *last_slash = '\0';
+
+    // Return the parent directory
+    return parent_dir;
+}
+
 static int agfs_mkdir(const char* path, mode_t mode) {
     printf("agfs_mkdir: Path: %s\n", path);
 
-    // Node* directory = find_node(path);
+    Node* parent = find_node(find_parent(path));
 
-    const char* name = find_name(path);
+    if (!parent) {
+        return -ENOENT;
+    }
 
-    printf("The name is: %s\n", name);
+    const char* new_dir_name = find_name(path);
 
-    int ret = add_node(root, create_node(path + 1, 1));
+    printf("The name is: %s\n", new_dir_name);
+
+    int ret = add_node(parent, create_node(new_dir_name, 1));
 
     if (!ret) {
         return -ENOMEM;
@@ -277,9 +298,11 @@ static int agfs_mkdir(const char* path, mode_t mode) {
 static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     printf("agfs_mknod: Path: %s\n", path);
 
-    const char* file_name = find_name(path);
+    Node* parent = find_node(find_parent(path));
 
-    add_node(root, create_node(file_name, 0));
+    const char* new_file_name = find_name(path);
+
+    add_node(parent, create_node(new_file_name, 0));
 
     return 0;
 }
