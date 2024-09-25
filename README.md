@@ -1,4 +1,4 @@
-# Sitema de Arquivos
+# OPE-RAY FS - Sitema de Arquivos
 
 Sistema de arquivos simples com funcionalidades básicas de criar, ler, escrever e apagar arquivos, além da árvore de diretórios, feito para compor a nota do trabalho final da disciplina de Sistemas Operacionais I (2024.1), ofertada pelo Prof. Dr. Herbert Oliveria Rocha.
 
