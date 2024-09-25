@@ -54,3 +54,5 @@ cd ..
 # apagar o executável e desmontar o sistema de arquivos
 make clean
 ```
+
+Um detalhe é que nossa implementação faz o sistema de arquivos armazenado na memória. Ou seja, após desmontado, os arquivos e diretórios feitos são perdidos
