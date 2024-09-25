@@ -37,6 +37,21 @@ void print_file_list() {
         printf("%zu = %s\n", i, files[i]);
     }
 }
+/*
+ *
+    */
+
+// dir functions
+int is_dir(const char* path) {
+    if (strcmp(path, "/") == 0) return 1;
+
+    for (int curr_idx = 0; curr_idx <= last_dir_idx; curr_idx++ )
+        if (strcmp(path + 1, directories[curr_idx]) == 0) {
+            return 1;
+        }
+
+    return 0;
+}
 
 void add_dir(const char* dir_name) {
     for (int i = 0; i < last_dir_idx; i++) {
@@ -68,36 +83,13 @@ int rm_dir(const char* dir_name) {
     }
 }
 
-int rm_file(const char* file_name) {
-    for (int i = 0; i <= last_file_idx; i++) {
-        if (strcmp(file_name, files[i]) == 0) {
-            files[i][0] = '\0';
-
-            if (last_file_idx == i) {
-                last_file_idx--;
-            }
-
-            return 1;
-        }
-    }
-}
-
-static int agfs_rmdir(const char* path) {
-    // after, check if directory is empty. If not, return -ENOTEMPTY
-    if (!rm_dir(path + 1)) {
-        return -ENOENT; // Directory not found
-    }
-
-    return 0;
-}
-
-int is_dir(const char* path) {
+// file functions
+int is_file(const char* path) {
     path++; // Eliminating "/" in the path
 
-    for (int curr_idx = 0; curr_idx <= last_dir_idx; curr_idx++ )
-        if (strcmp(path, directories[curr_idx]) == 0) {
+    for (int i = 0; i <= last_file_idx; i++)
+        if (strcmp(path, files[i]) == 0)
             return 1;
-        }
 
     return 0;
 }
@@ -120,14 +112,18 @@ void add_file(const char* file_name) {
     print_file_list();
 }
 
-int is_file(const char* path) {
-    path++; // Eliminating "/" in the path
+int rm_file(const char* file_name) {
+    for (int i = 0; i <= last_file_idx; i++) {
+        if (strcmp(file_name, files[i]) == 0) {
+            files[i][0] = '\0';
 
-    for (int i = 0; i <= last_file_idx; i++)
-        if (strcmp(path, files[i]) == 0)
+            if (last_file_idx == i) {
+                last_file_idx--;
+            }
+
             return 1;
-
-    return 0;
+        }
+    }
 }
 
 int get_file_index(const char* path) {
@@ -149,16 +145,19 @@ void write_to_file(const char* path, const char* new_content) {
     strcpy(files_content[file_idx], new_content);
 }
 
+// fuse operations
 static int agfs_getattr(const char* path, struct stat* st) {
     st->st_uid = getuid(); // The owner of the file/directory is the user who mounted the filesystem
     st->st_gid = getgid(); // The group of the file/directory is the same as the group of the user who mounted the filesystem
     st->st_atime = time(NULL); // The last "a"ccess of the file/directory is right now
     st->st_mtime = time(NULL); // The last "m"odification of the file/directory is right now
 
-    if (strcmp(path, "/") == 0 || is_dir(path) == 1) {
+    printf("agfs_getattr: Path: %s\n", path);
+
+    if (is_dir(path)) {
         st->st_mode = S_IFDIR | 0755;
         st->st_nlink = 2;
-    } else if (is_file(path) == 1) {
+    } else if (is_file(path)) {
         st->st_mode = S_IFREG | 0644;
         st->st_nlink = 1;
         st->st_size = 1024;
@@ -176,22 +175,35 @@ static int agfs_readdir(
     off_t offset, 
     struct fuse_file_info* fi
 ) {
+    printf("agfs_readdir: Path: %s\n", path);
+
     filler(buffer, ".", NULL, 0); // Current Directory
     filler(buffer, "..", NULL, 0); // Parent Directory
 
     // If the user is trying to show the files/directories of the root directory show the following
-    if (strcmp(path, "/") == 0) {
+    // find the directories of that specific directory and list them
+    // this function, readdir, is called upon the directory we're in
+    if (is_dir(path)) {
         for (int curr_idx = 0; curr_idx <= last_dir_idx; curr_idx++) {
-            if (directories[curr_idx][0] != '\0') {
+            if (directories[curr_idx][0] != '\0' && strcmp(path + 1, directories[curr_idx])) {
                 filler(buffer, directories[curr_idx], NULL, 0);
             }
         }
 
         for (int curr_idx = 0; curr_idx <= last_file_idx; curr_idx++) {
-            if (files[curr_idx][0] != '\0') {
+            if (files[curr_idx][0] != '\0') { // && strcmp(path + 1, files[curr_idx])
                 filler(buffer, files[curr_idx], NULL, 0);
             }
         }
+    }
+
+    return 0;
+}
+
+static int agfs_rmdir(const char* path) {
+    // after, check if directory is empty. If not, return -ENOTEMPTY
+    if (!rm_dir(path + 1)) {
+        return -ENOENT; // Directory not found
     }
 
     return 0;
@@ -204,6 +216,7 @@ static int agfs_read(
     off_t offset,
     struct fuse_file_info* fi
 ) {
+    printf("agfs_read: Path: %s\n", path);
     int file_idx = get_file_index(path);
 
     if (file_idx == -1) return -1;
@@ -216,6 +229,7 @@ static int agfs_read(
 }
 
 static int agfs_mkdir(const char* path, mode_t mode) {
+    printf("agfs_mkdir: Path: %s\n", path);
     path++;
     add_dir(path);
 
@@ -223,6 +237,7 @@ static int agfs_mkdir(const char* path, mode_t mode) {
 }
 
 static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
+    printf("agfs_mknod: Path: %s\n", path);
     path++;
     add_file(path);
 
@@ -230,6 +245,7 @@ static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
 }
 
 static int agfs_unlink(const char* path) {
+    printf("agfs_unlink: Path: %s\n", path);
     if (!rm_file(path + 1)) {
         return -ENOENT; // File not found
     }
@@ -243,6 +259,7 @@ static int agfs_write(
     size_t size,
     off_t offset, struct fuse_file_info* info
 ) {
+    printf("agfs_write: Path: %s\n", path);
     write_to_file(path, buffer);
 
     return (int) size;
