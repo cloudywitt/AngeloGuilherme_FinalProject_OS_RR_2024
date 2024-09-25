@@ -97,12 +97,6 @@ const char* find_name(const char* path) {
     return last_slash + 1;
 }
 
-char files[256][256];
-int last_file_idx = -1;
-
-char files_content[256][256];
-int last_file_content_idx = -1;
-
 // dir functions
 int add_node(Node* target, Node* node) {
     if (!target->is_dir) {
@@ -268,20 +262,27 @@ static int agfs_mkdir(const char* path, mode_t mode) {
 
 static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     printf("agfs_mknod: Path: %s\n", path);
-    path++;
-    // add_file(path);
+
+    const char* file_name = find_name(path);
+
+    add_node(root, create_node(file_name, 0));
 
     return 0;
 }
 
-// static int agfs_unlink(const char* path) {
-//     printf("agfs_unlink: Path: %s\n", path);
-//     if (!rm_file(path + 1)) {
-//         return -ENOENT; // File not found
-//     }
-//
-//     return 0;
-// }
+static int agfs_unlink(const char* path) {
+    printf("agfs_unlink: Path: %s\n", path);
+
+    Node* target = find_node(path);
+
+    if (!target || target->is_dir) {
+        return -ENOENT;
+    }
+
+    remove_node(target);
+
+    return 0;
+}
 
 static int agfs_write(
     const char* path,
@@ -315,7 +316,7 @@ static struct fuse_operations operations = {
     .mkdir = agfs_mkdir,
     .rmdir = agfs_rmdir,
     .mknod = agfs_mknod,
-    // .unlink = agfs_unlink,
+    .unlink = agfs_unlink,
     .write = agfs_write,
     .utimens = agfs_utimens,
 };
