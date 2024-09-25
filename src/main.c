@@ -35,7 +35,7 @@ Node* create_node(const char* name, int is_dir) {
     new_node->is_dir = is_dir;
     new_node->parent = NULL;
     new_node->content = (is_dir) ? NULL : malloc(sizeof(char) * MAX_CONTENT_SIZE);
-    new_node->children = (is_dir) ? calloc(MAX_CHILDREN_NUM, sizeof(Node)) : NULL; // might give some trouble
+    new_node->children = (is_dir) ? calloc(MAX_CHILDREN_NUM, sizeof(Node*)) : NULL; // might give some trouble
     new_node->children_num = (is_dir) ? 0 : -1;
 
     return new_node;
@@ -51,10 +51,50 @@ void init_root() {
 Node* find_node(const char* path) {
     if (strcmp("/", path) == 0) return root;
 
+    char path_copy[256];
+    strcpy(path_copy, path);
+
+    char* token = strtok(path_copy, "/");
+
     Node* rt = root;
 
+    while (token != NULL) {
+        for (int i = 0; i < MAX_CHILDREN_NUM; i++) {
+            if (rt->children[i] && strcmp(rt->children[i]->name, token) == 0) {
+                rt = rt->children[i];
 
+                break;
+            }
+        }
 
+        if (strcmp(rt->name, token) == 0) {
+            token = strtok(NULL, "/"); // Get the next component
+        } else {
+            return NULL;
+        }
+
+        // printf("%s\n", token); // Print the current component
+    }
+
+    return rt;
+}
+
+const char* find_name(const char* path) {
+    // Find the last occurrence of '/'
+    const char* last_slash = strrchr(path, '/');
+    
+    // If no slash is found, the entire path is the file name
+    if (!last_slash) {
+        return path;
+    }
+
+    // If the path ends with '/', return an empty string
+    if (*(last_slash + 1) == '\0') {
+        return "";
+    }
+
+    // Return the part of the string after the last '/'
+    return last_slash + 1;
 }
 
 char files[256][256];
@@ -63,114 +103,54 @@ int last_file_idx = -1;
 char files_content[256][256];
 int last_file_content_idx = -1;
 
-// void print_dir_list(Node dir) {
-//     printf("Dir list:\n");
-//
-//     for (size_t i = 0; i < 10; i++) {
-//         printf("%zu = %s\n", i, directories[i]);
-//     }
-// }
-
-void print_file_list() {
-    printf("File list:\n");
-
-    for (size_t i = 0; i < 10; i++) {
-        printf("%zu = %s\n", i, files[i]);
-    }
-}
-
 // dir functions
+int add_node(Node* target, Node* node) {
+    if (!target->is_dir) {
+        printf("Target is not a directory\n");
 
-// void add_dir(const char* dir_name) {
-//     for (int i = 0; i < last_dir_idx; i++) {
-//         if (directories[i][0] == '\0') {
-//             strcpy(directories[i], dir_name);
-//
-//             print_dir_list();
-//             return;
-//         }
-//     }
-//
-//     last_dir_idx++;
-//     strcpy(directories[last_dir_idx], dir_name);
-//
-//     print_dir_list();
-// }
+        return 0;
+    }
 
-// int rm_dir(const char* dir_name) {
-//     for (int i = 0; i <= last_dir_idx; i++) {
-//         if (strcmp(dir_name, directories[i]) == 0) {
-//             directories[i][0] = '\0';
-//
-//             if (last_dir_idx == i) {
-//                 last_dir_idx--;
-//             }
-//
-//             return 1;
-//         }
-//     }
-// }
+    if (target->children_num == MAX_CHILDREN_NUM) {
+        printf("Target is full\n");
 
-// file functions
-int is_file(const char* path) {
-    path++; // Eliminating "/" in the path
+        return 0;
+    }
 
-    for (int i = 0; i <= last_file_idx; i++)
-        if (strcmp(path, files[i]) == 0)
+    for (int i = 0; i < MAX_CHILDREN_NUM; i++) {
+        if (!target->children[i]) {
+            target->children[i] = node;
+            node->parent = target;
+            target->children_num++;
+
             return 1;
+        }
+    }
 
     return 0;
 }
 
-void add_file(const char* file_name) {
-    for (int i = 0; i < last_file_idx; i++) {
-        if (files[i][0] == '\0') {
-            strcpy(files[i], file_name);
-            strcpy(files_content[i], "");
+void remove_node(Node* target) {
+    Node* parent = target->parent;
 
-            print_file_list();
+    for (int i = 0; i < MAX_CHILDREN_NUM; i++) {
+        if (parent->children[i] && strcmp(parent->children[i]->name, target->name) == 0) {
+            free(parent->children[i]);
+            parent->children[i] = NULL;
+            parent->children_num--;
 
             return;
         }
     }
-
-    last_file_idx++;
-    strcpy(files[last_file_idx], file_name);
-
-    print_file_list();
-}
-
-int rm_file(const char* file_name) {
-    for (int i = 0; i <= last_file_idx; i++) {
-        if (strcmp(file_name, files[i]) == 0) {
-            files[i][0] = '\0';
-
-            if (last_file_idx == i) {
-                last_file_idx--;
-            }
-
-            return 1;
-        }
-    }
-}
-
-int get_file_index(const char* path) {
-    path++; // Eliminating "/" in the path
-
-    for (int i = 0; i <= last_file_idx; i++)
-        if (strcmp(path, files[i]) == 0)
-            return i;
-
-    return -1;
 }
 
 void write_to_file(const char* path, const char* new_content) {
-    int file_idx = get_file_index(path);
+    // int file_idx = get_file_index(path);
 
-    if (file_idx == -1) // No such file
-        return;
+    // if (file_idx == -1) // No such file
+        // return;
 
-    strcpy(files_content[file_idx], new_content);
+    // strcpy(files_content[file_idx], new_content);
 }
 
 // fuse operations
@@ -185,6 +165,7 @@ static int agfs_getattr(const char* path, struct stat* st) {
     Node* node = find_node(path);
 
     if (!node) {
+        printf("No such file, baby\n");
         return -ENOENT; // No file or directory
     }
 
@@ -227,31 +208,26 @@ static int agfs_readdir(
             }
 
         }
-
-        // for (int curr_idx = 0; curr_idx <= last_dir_idx; curr_idx++) {
-        //     if (directories[curr_idx][0] != '\0' && strcmp(path + 1, directories[curr_idx])) {
-        //         filler(buffer, directories[curr_idx], NULL, 0);
-        //     }
-        // }
-
-        // for (int curr_idx = 0; curr_idx <= last_file_idx; curr_idx++) {
-        //     if (files[curr_idx][0] != '\0') { // && strcmp(path + 1, files[curr_idx])
-        //         filler(buffer, files[curr_idx], NULL, 0);
-        //     }
-        // }
     }
 
     return 0;
 }
 
-// static int agfs_rmdir(const char* path) {
-//     // after, check if directory is empty. If not, return -ENOTEMPTY
-//     if (!rm_dir(path + 1)) {
-//         return -ENOENT; // Directory not found
-//     }
-//
-//     return 0;
-// }
+static int agfs_rmdir(const char* path) {
+    Node* dir = find_node(path);
+
+    if (!dir || !dir->is_dir) {
+        return -ENOENT; // Directory not found
+    }
+
+    if (dir->children_num > 0) {
+        return -ENOTEMPTY;
+    }
+
+    remove_node(dir);
+
+    return 0;
+}
 
 static int agfs_read(
     const char* path,
@@ -261,41 +237,51 @@ static int agfs_read(
     struct fuse_file_info* fi
 ) {
     printf("agfs_read: Path: %s\n", path);
-    int file_idx = get_file_index(path);
+    // int file_idx = get_file_index(path);
 
-    if (file_idx == -1) return -1;
+    // if (file_idx == -1) return -1;
 
-    char* content = files_content[file_idx];
+    // char* content = files_content[file_idx];
 
-    memcpy(buffer, content + offset, size);
+    // memcpy(buffer, content + offset, size);
 
-    return strlen(content) - offset;
+    // return strlen(content) - offset;
 }
 
-// static int agfs_mkdir(const char* path, mode_t mode) {
-//     printf("agfs_mkdir: Path: %s\n", path);
-//     path++;
-//     add_dir(path);
-//
-//     return 0;
-// }
+static int agfs_mkdir(const char* path, mode_t mode) {
+    printf("agfs_mkdir: Path: %s\n", path);
 
-static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
-    printf("agfs_mknod: Path: %s\n", path);
-    path++;
-    add_file(path);
+    // Node* directory = find_node(path);
 
-    return 0;
-}
+    const char* name = find_name(path);
 
-static int agfs_unlink(const char* path) {
-    printf("agfs_unlink: Path: %s\n", path);
-    if (!rm_file(path + 1)) {
-        return -ENOENT; // File not found
+    printf("The name is: %s\n", name);
+
+    int ret = add_node(root, create_node(path + 1, 1));
+
+    if (!ret) {
+        return -ENOMEM;
     }
 
     return 0;
 }
+
+static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
+    printf("agfs_mknod: Path: %s\n", path);
+    path++;
+    // add_file(path);
+
+    return 0;
+}
+
+// static int agfs_unlink(const char* path) {
+//     printf("agfs_unlink: Path: %s\n", path);
+//     if (!rm_file(path + 1)) {
+//         return -ENOENT; // File not found
+//     }
+//
+//     return 0;
+// }
 
 static int agfs_write(
     const char* path,
@@ -326,10 +312,10 @@ static struct fuse_operations operations = {
     .getattr = agfs_getattr,
     .readdir = agfs_readdir,
     .read = agfs_read,
-    // .mkdir = agfs_mkdir,
-    // .rmdir = agfs_rmdir,
+    .mkdir = agfs_mkdir,
+    .rmdir = agfs_rmdir,
     .mknod = agfs_mknod,
-    .unlink = agfs_unlink,
+    // .unlink = agfs_unlink,
     .write = agfs_write,
     .utimens = agfs_utimens,
 };
