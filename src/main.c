@@ -21,9 +21,7 @@ typedef struct node {
     char name[MAX_NAME_SIZE];
     int is_dir;
     struct node* parent;
-    // if file
     char* content;
-    // if dir
     struct node** children;
     int children_num;
 } Node;
@@ -35,7 +33,7 @@ Node* create_node(const char* name, int is_dir) {
     new_node->is_dir = is_dir;
     new_node->parent = NULL;
     new_node->content = (is_dir) ? NULL : calloc(MAX_CONTENT_SIZE, sizeof(char));
-    new_node->children = (is_dir) ? calloc(MAX_CHILDREN_NUM, sizeof(Node*)) : NULL; // might give some trouble
+    new_node->children = (is_dir) ? calloc(MAX_CHILDREN_NUM, sizeof(Node*)) : NULL;
     new_node->children_num = (is_dir) ? 0 : -1;
 
     return new_node;
@@ -43,11 +41,11 @@ Node* create_node(const char* name, int is_dir) {
 
 Node* root;
 
+// Inicializa a raiz do sistema de arquivos
 void init_root() {
     root = create_node("/", 1);
 }
 
-// find node to getattr
 Node* find_node(const char* path) {
     if (strcmp("/", path) == 0) return root;
 
@@ -68,17 +66,40 @@ Node* find_node(const char* path) {
         }
 
         if (strcmp(rt->name, token) == 0) {
-            token = strtok(NULL, "/"); // Get the next component
+            token = strtok(NULL, "/"); // Pega o próximo componente
         } else {
             return NULL;
         }
-
-        // printf("%s\n", token); // Print the current component
     }
 
     return rt;
 }
 
+// Acha o nome do diretório atual, baseado no caminho especificado
+char* find_current_directory_name(const char* path) {
+    if (strcmp("/", path) == 0) {
+        return NULL;
+    }
+
+    // Copy the path since we will modify it
+    static char parent_dir[256];
+    strcpy(parent_dir, path);
+
+    // Find the last occurrence of '/'
+    char* last_slash = strrchr(parent_dir, '/');
+    
+    if (last_slash == NULL || last_slash == parent_dir) {
+        return "/";  // The file is on root
+    }
+
+    // Remove the last component (file or directory name) by terminating the string at the last '/'
+    *last_slash = '\0';
+
+    // Return the parent directory
+    return parent_dir;
+}
+
+// Basicamente pega o último nome do caminho
 const char* find_name(const char* path) {
     // Find the last occurrence of '/'
     const char* last_slash = strrchr(path, '/');
@@ -97,7 +118,7 @@ const char* find_name(const char* path) {
     return last_slash + 1;
 }
 
-// dir functions
+// Adiciona um nó (arquivo/diretório) em um diretório
 int add_node(Node* target, Node* node) {
     if (!target->is_dir) {
         printf("Target is not a directory\n");
@@ -124,6 +145,7 @@ int add_node(Node* target, Node* node) {
     return 0;
 }
 
+// Remove um nó (arquivo/diretório) de um diretório
 void remove_node(Node* target) {
     Node* parent = target->parent;
 
@@ -138,6 +160,7 @@ void remove_node(Node* target) {
     }
 }
 
+// Escreve no arquivo
 void write_to_file(const char* path, const char* new_content) {
     Node* file = find_node(path);
 
@@ -148,7 +171,7 @@ void write_to_file(const char* path, const char* new_content) {
     strcpy(file->content, new_content);
 }
 
-// fuse operations
+// Função chamada pelo FUSE para buscar informações de um arquivo/diretório
 static int agfs_getattr(const char* path, struct stat* st) {
     st->st_uid = getuid(); // The owner of the file/directory is the user who mounted the filesystem
     st->st_gid = getgid(); // The group of the file/directory is the same as the group of the user who mounted the filesystem
@@ -176,6 +199,7 @@ static int agfs_getattr(const char* path, struct stat* st) {
     return 0;
 }
 
+// Função chamada pelo FUSE para ler o conteúdo de um diretório
 static int agfs_readdir(
     const char* path, 
     void* buffer, 
@@ -185,8 +209,8 @@ static int agfs_readdir(
 ) {
     printf("agfs_readdir: Path: %s\n", path);
 
-    filler(buffer, ".", NULL, 0); // Current Directory
-    filler(buffer, "..", NULL, 0); // Parent Directory
+    filler(buffer, ".", NULL, 0); // Diretório atual
+    filler(buffer, "..", NULL, 0); // Diretório pai
 
     Node* directory = find_node(path);
 
@@ -202,6 +226,7 @@ static int agfs_readdir(
     return 0;
 }
 
+// Função chamada pelo FUSE para remover um diretório
 static int agfs_rmdir(const char* path) {
     Node* dir = find_node(path);
 
@@ -218,6 +243,7 @@ static int agfs_rmdir(const char* path) {
     return 0;
 }
 
+// Função chamada pelo FUSE para ler o conteúdo de um arquivo
 static int agfs_read(
     const char* path,
     char* buffer,
@@ -238,6 +264,7 @@ static int agfs_read(
     return strlen(file->content) - offset;
 }
 
+// Função chamada pelo FUSE para escrever em um arquivo
 static int agfs_write(
     const char* path,
     const char* buffer,
@@ -250,33 +277,10 @@ static int agfs_write(
     return (int) size;
 }
 
-char* find_parent(const char* path) {
-    if (strcmp("/", path) == 0) {
-        return NULL;
-    }
-
-    // Copy the path since we will modify it
-    static char parent_dir[256];
-    strcpy(parent_dir, path);
-
-    // Find the last occurrence of '/'
-    char* last_slash = strrchr(parent_dir, '/');
-    
-    if (last_slash == NULL || last_slash == parent_dir) {
-        return "/";  // The file is on root
-    }
-
-    // Remove the last component (file or directory name) by terminating the string at the last '/'
-    *last_slash = '\0';
-
-    // Return the parent directory
-    return parent_dir;
-}
-
 static int agfs_mkdir(const char* path, mode_t mode) {
     printf("agfs_mkdir: Path: %s\n", path);
 
-    Node* parent = find_node(find_parent(path));
+    Node* parent = find_node(find_current_directory_name(path));
 
     if (!parent) {
         return -ENOENT;
@@ -295,10 +299,11 @@ static int agfs_mkdir(const char* path, mode_t mode) {
     return 0;
 }
 
+// Função chamada pelo FUSE para criar um arquivo
 static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     printf("agfs_mknod: Path: %s\n", path);
 
-    Node* parent = find_node(find_parent(path));
+    Node* parent = find_node(find_current_directory_name(path));
 
     const char* new_file_name = find_name(path);
 
@@ -307,6 +312,7 @@ static int agfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     return 0;
 }
 
+// Função chamada pelo FUSE para apagar um arquivo
 static int agfs_unlink(const char* path) {
     printf("agfs_unlink: Path: %s\n", path);
 
@@ -321,6 +327,7 @@ static int agfs_unlink(const char* path) {
     return 0;
 }
 
+// Função chamada pelo FUSE para atribuir os horários dos arquivos
 static int agfs_utimens(
     const char* path,
     const struct timespec tv[2]
@@ -334,6 +341,7 @@ static int agfs_utimens(
     return -ENOENT; // File not found
 }
 
+// Estrutura com as operações do FUSE, para serem chamadas durante a execução
 static struct fuse_operations operations = {
     .getattr = agfs_getattr,
     .readdir = agfs_readdir,
