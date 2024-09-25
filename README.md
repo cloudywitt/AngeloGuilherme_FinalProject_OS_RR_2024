@@ -39,11 +39,12 @@ cd mnt_point
 
 Após entrar no diretório no qual foi montado o SA, pode-se realizar as ações básicas:
 - **touch <nome_arquivo>**: criar um arquivo vazio
+- **nano <nome_arquivo>**: editar o texto de um arquivo
+- **cat <nome_arquivo>**: mostrar o conteúdo de um arquivo
+- **rm <nome_arquivo>**: remover um arquivo
 - **mkdir <nome_diretorio>**: criar um diretório
 - **cd <nome_diretorio>**: acessar um diretório
 - **rmdir <nome_diretorio>**: remover um diretório (apenas vazio)
-- **rm <nome_arquivo>**: remover um arquivo
-- **nano <nome_arquivo>**: editar o texto de um arquivo
 - **E mais!**
 
 Ao final, pode-se sair e desmontar o sistema de arquivos:
