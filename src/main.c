@@ -22,7 +22,7 @@ typedef struct node {
     int is_dir;
     struct node* parent;
     // if file
-    char** content;
+    char* content;
     // if dir
     struct node** children;
     int children_num;
@@ -34,7 +34,7 @@ Node* create_node(const char* name, int is_dir) {
     strcpy(new_node->name, name);
     new_node->is_dir = is_dir;
     new_node->parent = NULL;
-    new_node->content = (is_dir) ? NULL : malloc(sizeof(char) * MAX_CONTENT_SIZE);
+    new_node->content = (is_dir) ? NULL : calloc(MAX_CONTENT_SIZE, sizeof(char));
     new_node->children = (is_dir) ? calloc(MAX_CHILDREN_NUM, sizeof(Node*)) : NULL; // might give some trouble
     new_node->children_num = (is_dir) ? 0 : -1;
 
@@ -139,12 +139,13 @@ void remove_node(Node* target) {
 }
 
 void write_to_file(const char* path, const char* new_content) {
-    // int file_idx = get_file_index(path);
+    Node* file = find_node(path);
 
-    // if (file_idx == -1) // No such file
-        // return;
+    if (!file || file->is_dir) {
+        return;
+    }
 
-    // strcpy(files_content[file_idx], new_content);
+    strcpy(file->content, new_content);
 }
 
 // fuse operations
@@ -231,15 +232,28 @@ static int agfs_read(
     struct fuse_file_info* fi
 ) {
     printf("agfs_read: Path: %s\n", path);
-    // int file_idx = get_file_index(path);
 
-    // if (file_idx == -1) return -1;
+    Node* file = find_node(path);
 
-    // char* content = files_content[file_idx];
+    if (!file || file->is_dir) {
+        return -ENOENT;
+    }
 
-    // memcpy(buffer, content + offset, size);
+    memcpy(buffer, file->content + offset, size);
 
-    // return strlen(content) - offset;
+    return strlen(file->content) - offset;
+}
+
+static int agfs_write(
+    const char* path,
+    const char* buffer,
+    size_t size,
+    off_t offset, struct fuse_file_info* info
+) {
+    printf("agfs_write: Path: %s\n", path);
+    write_to_file(path, buffer);
+
+    return (int) size;
 }
 
 static int agfs_mkdir(const char* path, mode_t mode) {
@@ -282,18 +296,6 @@ static int agfs_unlink(const char* path) {
     remove_node(target);
 
     return 0;
-}
-
-static int agfs_write(
-    const char* path,
-    const char* buffer,
-    size_t size,
-    off_t offset, struct fuse_file_info* info
-) {
-    printf("agfs_write: Path: %s\n", path);
-    write_to_file(path, buffer);
-
-    return (int) size;
 }
 
 static int agfs_utimens(
